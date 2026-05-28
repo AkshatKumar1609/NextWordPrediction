@@ -7,14 +7,14 @@ import pickle
 import uvicorn
 
 # Load model
-model = load_model("my_model.keras")
+model = load_model("model.keras")
 
 # Load tokenizer
 with open("tokenizer.pkl", "rb") as f:
     tokenizer = pickle.load(f)
 
 # Max sequence length
-MAX_LEN = 21
+MAX_LEN = 307
 
 app = FastAPI(title="Next Word Prediction API")
 
