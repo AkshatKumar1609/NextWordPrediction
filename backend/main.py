@@ -1,16 +1,19 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 import numpy as np
 import pickle
 import uvicorn
+import os
 
 # Load model
-model = load_model("model.keras")
+model = load_model("backend/model.keras")
 
 # Load tokenizer
-with open("tokenizer.pkl", "rb") as f:
+with open("backend/tokenizer.pkl", "rb") as f:
     tokenizer = pickle.load(f)
 
 # Max sequence length
@@ -18,16 +21,23 @@ MAX_LEN = 307
 
 app = FastAPI(title="Next Word Prediction API")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Request schema
 class TextInput(BaseModel):
     text: str
 
 
-# Home route
-@app.get("/")
-def home():
-    return {"message": "Next Word Prediction API Running"}
+# Health route
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 
 # Prediction route
@@ -60,7 +70,7 @@ def predict_next_word(data: TextInput):
             }
 
     return {"error": "Word not found"}
-    
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+frontend_dir = os.path.join(os.path.dirname(__file__), "../frontend/dist")
+if os.path.exists(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")

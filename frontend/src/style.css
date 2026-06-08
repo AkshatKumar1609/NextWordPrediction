@@ -1,0 +1,286 @@
+/* ─── Reset & Base ──────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #FAFAF8;
+  --ink: #1C1C1C;
+  --ink-ghost: #C8C8C8;
+  --ink-muted: #9A9A9A;
+  --placeholder: #ABABAB;   /* was #D8D8D8 / #D0D0D0 — slightly darker for readability */
+  --accent: #2D6A4F;
+  --accent-glow: rgba(45, 106, 79, 0.10);
+  --font-body: 'Merriweather', Georgia, serif;
+  --font-ui: 'Inter', system-ui, sans-serif;
+  --transition: 200ms ease;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+/* ─── Minimal Header ────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 48px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+}
+
+.brand__mark {
+  width: 26px;
+  height: 26px;
+  background: var(--accent);
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.brand__mark svg {
+  width: 14px;
+  height: 14px;
+}
+
+.brand__name {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 500;
+  /* sentence-case: removed text-transform uppercase */
+  letter-spacing: 0.01em;
+  color: var(--ink-muted);
+}
+
+.status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #D0D0D0;
+  transition: background var(--transition), box-shadow var(--transition);
+}
+
+.status__dot.ready {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+.status__dot.error {
+  background: #C0392B;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0px var(--accent-glow); }
+  50%       { box-shadow: 0 0 0 5px transparent; }
+}
+
+/* ─── Editor Region ─────────────────────────────────────────────── */
+.editor-region {
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: 48px 24px 80px;
+}
+
+.editor-column {
+  width: 100%;
+  min-width: 0;
+  max-width: 700px;   /* comfortable reading column, 650–750px sweet spot */
+}
+
+/* ─── Document Title ────────────────────────────────────────────── */
+.doc-title {
+  font-family: var(--font-body);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.03em;
+  margin-bottom: 4px;
+  border: none;
+  outline: none;
+  background: transparent;
+  width: 100%;
+  caret-color: var(--accent);
+}
+
+.doc-title::placeholder {
+  color: var(--placeholder);
+}
+
+.doc-divider {
+  height: 1px;
+  background: #EBEBEB;
+  margin: 20px 0 28px;
+}
+
+/* ─── Contenteditable Writing Area ─────────────────────────────── */
+.editor-wrap {
+  position: relative;
+  min-height: 320px;
+}
+
+/* The actual editable div */
+.editor-body {
+  font-family: var(--font-body);
+  font-size: 1.15rem;
+  line-height: 1.95;
+  color: var(--ink);
+  caret-color: var(--accent);
+  outline: none;
+  min-height: 280px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  position: relative;
+  z-index: 1;
+}
+
+/* Placeholder via attribute */
+.editor-body:empty::before {
+  content: attr(data-placeholder);
+  color: var(--placeholder);
+  font-style: italic;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* Ghost span injected after user's text nodes */
+.editor-body .ghost {
+  color: var(--ink-ghost);
+  font-style: italic;
+  user-select: none;
+  pointer-events: none;
+  /* subtle fade-in */
+  animation: ghostIn 150ms ease both;
+}
+
+@keyframes ghostIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ─── Word Counter — fixed, pinned to viewport bottom-right ─────── */
+.word-counter {
+  position: fixed;
+  bottom: 22px;
+  right: 28px;
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #C8C8C8;
+  opacity: 0.7;
+  transition: opacity var(--transition), color var(--transition);
+  pointer-events: none;  /* never intercepts clicks */
+  z-index: 20;
+  user-select: none;
+}
+
+.word-counter:hover {
+  opacity: 1;
+  color: var(--ink-muted);
+  pointer-events: auto;
+}
+
+/* ─── Tab hint — inline pill, first-time onboarding only ────────── */
+/*
+  Rendered as an absolutely-positioned pill that floats just to the
+  right of the ghost text so it never pushes content around.
+  JS adds/removes .visible; once the user accepts once, JS adds
+  .dismissed which triggers the fade-out and then removes the element.
+*/
+.tab-hint {
+  /* hidden by default; inserted into DOM but invisible */
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-ui);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: #BBBBBB;
+  background: #F4F4F2;
+  border: 1px solid #E6E6E4;
+  border-radius: 4px;
+  padding: 2px 6px 2px 5px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-1px);
+  transition: opacity 180ms ease, transform 180ms ease;
+  /* positioned below the ghost word via JS — fallback offset */
+  top: 2em;
+  left: 0;
+}
+
+.tab-hint.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tab-hint.dismissed {
+  opacity: 0 !important;
+  transform: translateY(-4px) !important;
+  transition: opacity 400ms ease, transform 400ms ease;
+}
+
+.tab-hint .kbd {
+  display: inline-block;
+  background: #ECECEA;
+  border: 1px solid #DCDCDA;
+  border-bottom: 2px solid #DCDCDA;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #AAAAA8;
+  line-height: 1.6;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────── */
+.editor-region::-webkit-scrollbar { width: 4px; }
+.editor-region::-webkit-scrollbar-track { background: transparent; }
+.editor-region::-webkit-scrollbar-thumb { background: #E8E8E8; border-radius: 2px; }
+
+/* ─── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .header { padding: 16px 20px; }
+  .editor-region { padding: 32px 20px 60px; }
+  .doc-title { font-size: 1.5rem; }
+  .editor-body { font-size: 1.05rem; }
+}
