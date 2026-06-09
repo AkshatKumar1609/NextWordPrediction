@@ -302,7 +302,7 @@ async function fetchCurrentWord(prefix) {
     const res = await fetch(`${API_BASE}/predictCurrentWord`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ prefix }),
+      body:    JSON.stringify({ text: prefix }),
       signal:  abortController.signal,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

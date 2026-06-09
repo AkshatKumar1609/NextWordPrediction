@@ -49,7 +49,7 @@ def health():
 # Prediction route
 @app.post("/predictCurrentWord")
 def predict_curr_word(request: CurrrentWord):
-    prefix = request.prefix.lower().strip()
+    prefix = request.text.lower().strip()
     if prefix in prefix_map:
         return {
             "predicted_word" : prefix_map.get(prefix)
