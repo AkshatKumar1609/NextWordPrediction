@@ -8,10 +8,6 @@ import numpy as np
 import pickle
 import uvicorn
 import os
-import sys
-from backend import trie as trie_module
-
-sys.modules["trie"] = trie_module
 
 # Load model
 model = load_model("backend/model.keras")
@@ -20,9 +16,9 @@ model = load_model("backend/model.keras")
 with open("backend/tokenizer.pkl", "rb") as f:
     tokenizer = pickle.load(f)
 
-# Load trie
-with open("backend/trie.pkl", "rb") as f:
-    trie = pickle.load(f)
+# Load prefix_map
+with open("backend/prefix_map.pkl", "rb") as f:
+        prefix_map = pickle.load(f)
 
 # Max sequence length
 MAX_LEN = 307
@@ -53,15 +49,15 @@ def health():
 # Prediction route
 @app.post("/predictCurrentWord")
 def predict_curr_word(request: CurrrentWord):
-
     prefix = request.prefix.lower().strip()
-
-    suggestion = trie.predict(prefix)
-
-    return {
-        "prefix": prefix,
-        "suggestion": suggestion
-    }
+    if prefix in prefix_map:
+        return {
+            "predicted_word" : prefix_map.get(prefix)
+        }
+    else:
+        return {
+            "predicted_word" : prefix
+        }
 
 @app.post("/predictNextWord")
 def predict_next_word(data: NextWord):
