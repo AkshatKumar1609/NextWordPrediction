@@ -1,6 +1,6 @@
 import './style.css';
 
-const API_BASE = '';
+const API_BASE = 'http://localhost:8000';
 
 // ─── DOM ─────────────────────────────────────────────────────────
 document.getElementById('app').innerHTML = `
@@ -65,13 +65,14 @@ const statusText  = document.getElementById('statusText');
 const wordCounter = document.getElementById('wordCounter');
 
 // ─── State ────────────────────────────────────────────────────────
-let ghostSpan          = null;   // the injected ghost <span>
-let currentWord        = '';     // text of the current ghost suggestion
-let debounceTimer      = null;
-let abortController    = null;
-let isAccepting        = false;  // guard against input re-trigger during accept
-let tabHintDismissed   = false;  // permanently hide hint after first accept
-let tabHintPill        = null;   // DOM ref to the pill element
+let ghostSpan        = null;   // the injected ghost <span>
+let currentWord      = '';     // text of the current ghost suggestion
+let ghostMode        = null;   // 'current' | 'next'  — which API produced the ghost
+let debounceTimer    = null;
+let abortController  = null;
+let isAccepting      = false;  // guard against input re-trigger during accept
+let tabHintDismissed = false;  // permanently hide hint after first accept
+let tabHintPill      = null;   // DOM ref to the pill element
 
 // ─── Status ───────────────────────────────────────────────────────
 function setStatus(state, label) {
@@ -104,12 +105,23 @@ function getUserText() {
       text += node.textContent;
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       if (!node.classList.contains('ghost')) {
-        // could be a <br> (enter key) or other element
         text += node.tagName === 'BR' ? '\n' : node.textContent;
       }
     }
   }
   return text;
+}
+
+/**
+ * Extract the last partial word the user is currently typing.
+ * Returns '' if the text ends in whitespace (user just finished a word).
+ */
+function getCurrentPrefix() {
+  const text = getUserText();
+  // If ends in space/newline, no partial word
+  if (/\s$/.test(text)) return '';
+  const tokens = text.trim().split(/\s+/);
+  return tokens[tokens.length - 1] || '';
 }
 
 /**
@@ -121,14 +133,11 @@ function removeGhost() {
   }
   ghostSpan = null;
   currentWord = '';
+  ghostMode = null;
   hideTabHintPill();
 }
 
-// ─── Tab-hint pill helpers ───────────────────────────────────────
-/**
- * Show the pill hint for the first ghost prediction ever shown.
- * After user has accepted once it is never shown again.
- */
+// ─── Tab-hint pill helpers ────────────────────────────────────────
 function showTabHintPill() {
   if (tabHintDismissed) return;
   if (!tabHintPill) {
@@ -138,7 +147,6 @@ function showTabHintPill() {
     tabHintPill.innerHTML = '<kbd class="kbd">Tab ⇥</kbd>';
     editorWrap.appendChild(tabHintPill);
   }
-  // Position pill below the ghost span using getBoundingClientRect
   if (ghostSpan) {
     const wrapRect  = editorWrap.getBoundingClientRect();
     const ghostRect = ghostSpan.getBoundingClientRect();
@@ -147,38 +155,48 @@ function showTabHintPill() {
     tabHintPill.style.top  = `${top}px`;
     tabHintPill.style.left = `${Math.max(0, left)}px`;
   }
-  // Trigger transition
   requestAnimationFrame(() => tabHintPill.classList.add('visible'));
 }
 
 function hideTabHintPill() {
-  if (tabHintPill) {
-    tabHintPill.classList.remove('visible');
-  }
+  if (tabHintPill) tabHintPill.classList.remove('visible');
 }
 
 function dismissTabHintPill() {
   if (tabHintDismissed || !tabHintPill) return;
   tabHintDismissed = true;
   tabHintPill.classList.add('dismissed');
-  // Remove from DOM after animation completes
-  setTimeout(() => {
-    tabHintPill?.remove();
-    tabHintPill = null;
-  }, 450);
+  setTimeout(() => { tabHintPill?.remove(); tabHintPill = null; }, 450);
 }
 
+// ─── Insert Ghost ─────────────────────────────────────────────────
 /**
- * Insert ghost span at the very end of editorBody.
- * Adds a leading space if the text doesn't already end in whitespace.
+ * mode = 'current' → the ghost *replaces* the partial typed prefix visually
+ *        (the prefix chars are already in the DOM; ghost shows the full completion)
+ * mode = 'next'    → the ghost appends a new word after the current sentence
  */
-function insertGhost(word) {
+function insertGhost(word, mode = 'next') {
   removeGhost();
   currentWord = word;
+  ghostMode   = mode;
 
   const rawText = getUserText();
-  const needsSpace = rawText.length > 0 && !/\s$/.test(rawText);
-  const displayText = (needsSpace ? ' ' : '') + word;
+
+  let displayText;
+  if (mode === 'current') {
+    // Ghost should show the *completion* beyond what's already typed.
+    // e.g. user typed "hel", prefix_map returns "hello" → display "lo"
+    const prefix = getCurrentPrefix();
+    const completion = word.startsWith(prefix.toLowerCase())
+      ? word.slice(prefix.length)   // show only the remaining characters
+      : word;                        // fallback: show full word
+    displayText = completion;
+    if (!displayText) { currentWord = ''; ghostMode = null; return; } // nothing to show
+  } else {
+    // Next-word mode: append after a space
+    const needsSpace = rawText.length > 0 && !/\s$/.test(rawText);
+    displayText = (needsSpace ? ' ' : '') + word;
+  }
 
   ghostSpan = document.createElement('span');
   ghostSpan.className = 'ghost';
@@ -186,21 +204,14 @@ function insertGhost(word) {
   ghostSpan.textContent = displayText;
   editorBody.appendChild(ghostSpan);
 
-  // Show the one-time onboarding pill after ghost renders
   requestAnimationFrame(showTabHintPill);
 }
 
-// ─── Caret / Selection helpers ────────────────────────────────────
-/**
- * Move the caret to the absolute character offset `pos` within editorBody,
- * counting only non-ghost nodes.
- */
+// ─── Caret helpers ────────────────────────────────────────────────
 function setCaretToEnd() {
   const range = document.createRange();
   const sel   = window.getSelection();
-  // Find the last text node that is NOT inside the ghost span
-  let lastNode = null;
-  let lastOffset = 0;
+  let lastNode = null, lastOffset = 0;
 
   for (const node of editorBody.childNodes) {
     if (node === ghostSpan) continue;
@@ -232,32 +243,37 @@ function acceptGhost() {
 
   isAccepting = true;
 
-  const rawText    = getUserText();
-  const needsSpace = rawText.length > 0 && !/\s$/.test(rawText);
-  const insertion  = (needsSpace ? ' ' : '') + currentWord + ' ';
+  const mode    = ghostMode;
+  const rawText = getUserText();
 
-  // Replace ghost span with plain text node
+  let insertion;
+  if (mode === 'current') {
+    // The prefix is already in the DOM. The ghost shows only the tail.
+    // We replace the ghost with its tail text + a trailing space.
+    insertion = ghostSpan.textContent + ' ';
+  } else {
+    // Next-word: append "<space>word<space>"
+    const needsSpace = rawText.length > 0 && !/\s$/.test(rawText);
+    insertion = (needsSpace ? ' ' : '') + currentWord + ' ';
+  }
+
   const textNode = document.createTextNode(insertion);
   editorBody.replaceChild(textNode, ghostSpan);
   ghostSpan = null;
 
-  // Merge all adjacent text nodes to keep DOM tidy
   editorBody.normalize();
 
   currentWord = '';
+  ghostMode   = null;
 
-  // Permanently dismiss the onboarding pill on first successful accept
   dismissTabHintPill();
-
-  // Restore caret to end
   setCaretToEnd();
-
   updateWordCount();
 
   isAccepting = false;
 
-  // Immediately request next prediction
-  schedulePredict(getUserText(), 80);
+  // After accepting, immediately ask for the next word
+  schedulePredict(300);
 }
 
 // ─── Word Counter ─────────────────────────────────────────────────
@@ -267,29 +283,32 @@ function updateWordCount() {
   wordCounter.textContent = `${count} word${count !== 1 ? 's' : ''}`;
 }
 
-// ─── Fetch Prediction ─────────────────────────────────────────────
-async function fetchPrediction(text) {
-  const trimmed = text.trim();
-  if (!trimmed) { removeGhost(); return; }
-
-  // Cancel previous in-flight request
+// ─── API calls ────────────────────────────────────────────────────
+/**
+ * Cancel any previous in-flight fetch.
+ */
+function cancelPending() {
   if (abortController) abortController.abort();
   abortController = new AbortController();
+}
 
+/**
+ * POST /predictCurrentWord — called while user is mid-word.
+ * Sends the current partial prefix and shows a word-completion ghost.
+ */
+async function fetchCurrentWord(prefix) {
+  cancelPending();
   try {
-    const res = await fetch(`${API_BASE}/predictNextWord`, {
+    const res = await fetch(`${API_BASE}/predictCurrentWord`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ text: trimmed }),
+      body:    JSON.stringify({ prefix }),
       signal:  abortController.signal,
     });
-
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
     const data = await res.json();
-
-    if (data.predicted_word) {
-      insertGhost(data.predicted_word);
+    if (data.predicted_word && data.predicted_word !== prefix) {
+      insertGhost(data.predicted_word, 'current');
       setStatus('ready', 'Model ready');
     } else {
       removeGhost();
@@ -301,35 +320,79 @@ async function fetchPrediction(text) {
   }
 }
 
-function schedulePredict(text, delay = 300) {
+/**
+ * POST /predictNextWord — called after the user completes a word (space).
+ * Sends the full sentence and shows a next-word ghost.
+ */
+async function fetchNextWord(text) {
+  const trimmed = text.trim();
+  if (!trimmed) { removeGhost(); return; }
+  cancelPending();
+  try {
+    const res = await fetch(`${API_BASE}/predictNextWord`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ text: trimmed }),
+      signal:  abortController.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.predicted_word) {
+      insertGhost(data.predicted_word, 'next');
+      setStatus('ready', 'Model ready');
+    } else {
+      removeGhost();
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    removeGhost();
+    setStatus('error', 'Prediction failed');
+  }
+}
+
+// ─── Debounced scheduler ──────────────────────────────────────────
+/**
+ * Decide which endpoint to call based on cursor context,
+ * then debounce it.
+ */
+function schedulePredict(delay = 300) {
   clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => fetchPrediction(text), delay);
+  debounceTimer = setTimeout(() => {
+    const text   = getUserText();
+    const prefix = getCurrentPrefix();
+
+    if (prefix.length >= 1) {
+      // User is mid-word with at least 1 char → complete current word
+      fetchCurrentWord(prefix);
+    } else if (/\s$/.test(text) && text.trim().length > 0) {
+      // Text ends in whitespace → predict the next word
+      fetchNextWord(text);
+    } else {
+      removeGhost();
+    }
+  }, delay);
 }
 
 // ─── Input Handler ────────────────────────────────────────────────
 editorBody.addEventListener('input', () => {
   if (isAccepting) return;
 
-  // Always strip ghost on any new input
   removeGhost();
   updateWordCount();
 
   const text = getUserText();
   if (!text.trim()) { clearTimeout(debounceTimer); return; }
 
-  schedulePredict(text, 300);
+  schedulePredict(300);
 });
 
 // ─── Keydown Handler ─────────────────────────────────────────────
 editorBody.addEventListener('keydown', (e) => {
-  // Tab → accept ghost
   if (e.key === 'Tab') {
     e.preventDefault();
     acceptGhost();
     return;
   }
-
-  // Escape → dismiss ghost without accepting
   if (e.key === 'Escape') {
     removeGhost();
     if (abortController) abortController.abort();

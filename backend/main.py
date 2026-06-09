@@ -37,7 +37,7 @@ app.add_middleware(
 class NextWord(BaseModel):
     text: str
 class CurrrentWord(BaseModel):
-    prefix: str
+    text: str
 
 
 # Health route
