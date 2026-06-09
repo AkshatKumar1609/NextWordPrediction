@@ -16,6 +16,10 @@ model = load_model("backend/model.keras")
 with open("backend/tokenizer.pkl", "rb") as f:
     tokenizer = pickle.load(f)
 
+# Load trie
+with open("backend/trie.pkl", "rb") as f:
+    trie = pickle.load(f)
+
 # Max sequence length
 MAX_LEN = 307
 
@@ -30,8 +34,10 @@ app.add_middleware(
 )
 
 # Request schema
-class TextInput(BaseModel):
+class NextWord(BaseModel):
     text: str
+class CurrrentWord(BaseModel):
+    prefix: str
 
 
 # Health route
@@ -41,8 +47,20 @@ def health():
 
 
 # Prediction route
-@app.post("/predict")
-def predict_next_word(data: TextInput):
+@app.post("/predictCurrentWord")
+def predict_curr_word(request: CurrrentWord):
+
+    prefix = request.prefix.lower().strip()
+
+    suggestion = trie.predict(prefix)
+
+    return {
+        "prefix": prefix,
+        "suggestion": suggestion
+    }
+
+@app.post("/predictNextWord")
+def predict_next_word(data: NextWord):
 
     text = data.text
 
@@ -61,15 +79,12 @@ def predict_next_word(data: TextInput):
 
     pos = np.argmax(predicted)
 
-    # Find word
-    for word, index in tokenizer.word_index.items():
-        if index == pos:
-            return {
-                "input_text": text,
-                "predicted_word": word
-            }
+    predicted_word = tokenizer.index_word.get(pos)
+    return {
+        "input_text": text,
+        "predicted_word": predicted_word
+    }
 
-    return {"error": "Word not found"}
 
 frontend_dir = os.path.join(os.path.dirname(__file__), "../frontend/dist")
 if os.path.exists(frontend_dir):
