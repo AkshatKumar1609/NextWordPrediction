@@ -8,6 +8,10 @@ import numpy as np
 import pickle
 import uvicorn
 import os
+import sys
+from backend import trie as trie_module
+
+sys.modules["trie"] = trie_module
 
 # Load model
 model = load_model("backend/model.keras")
